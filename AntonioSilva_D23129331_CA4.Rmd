@@ -1,0 +1,268 @@
+---
+title: "MATH 9102 - Probability and Statistical Inference Assignment - 4"
+author: "Antonio Silva (D23129331@mytudublin.ie)"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    mathjax: "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"
+  pdf_document:
+    toc: true
+    toc_depth: '2'
+---
+
+```{r, echo = FALSE, results = "hide"}
+needed_packages <- c("stats", "lm.beta", "stargazer", "ggplot2", "ppcor", "car", "nortest", "dplyr", "tidyverse")                      
+# Extract not installed packages
+not_installed <- needed_packages[!(needed_packages %in% installed.packages()[ , "Package"])]    
+
+if(length(not_installed)) install.packages(not_installed, repos ="http://cran.us.r-project.org")                              
+library(stats, quietly = T)
+library(ggplot2, quietly = T)
+library(lm.beta, quietly = T)
+library(stargazer, quietly = T)
+library(ppcor, quietly = T)
+library(car, quietly = T)
+library(nortest, quietly = T)
+library(dplyr, quietly = T)
+```
+
+# Question 1 - Linear regression with dummy variable [5 marks]
+Consider the dataset "weatherhistory.csv".
+
+ a) Describe dependent variable pressure and independent variable temperature.
+ b) Explore the relationship between pressure and temperature.
+ c) Build a linear model considering temperature and pressure.
+ d) Identify a dummy variable and build extended model considering dummy variable.
+ e) Report your findings.
+
+## Answer
+### a) Describe dependent variable pressure and independent variable temperature.
+Load the dataset
+
+```{r, echo=TRUE}
+weatherHistory <- read.csv("weatherHistory.csv")
+str(weatherHistory)
+```
+
+```{r, echo=TRUE}
+head(weatherHistory)
+```
+
+```{r, echo=TRUE}
+colnames(weatherHistory)
+```
+```{r, echo=TRUE}
+ggplot(weatherHistory, aes(y = temperature)) +
+  geom_boxplot(fill = "lightblue", colour = "darkblue") +
+  labs(title = "Boxplot of Temperature", y = "Temperature") +
+  theme_minimal()
+```
+
+```{r, echo=TRUE}
+ggplot(weatherHistory, aes(y = pressure)) +
+  geom_boxplot(fill = "lightblue", colour = "darkblue") +
+  labs(title = "Boxplot of Temperature", y = "Temperature") +
+  theme_minimal()
+```
+
+```{r, echo=TRUE}
+ggplot(weatherHistory, aes(x = temperature)) +
+  geom_histogram(bins = 60, fill = "skyblue", color = "black") + # You can adjust the number of bins
+  labs(title = "Histogram of Temperature", x = "Temperature (°C)", y = "Frequency") +
+  theme_minimal()
+```
+
+```{r, echo=TRUE}
+ggplot(weatherHistory, aes(x = pressure)) +
+  geom_histogram(bins = 200, fill = "lightgreen", color = "black") + # Adjust the number of bins as needed
+  labs(title = "Histogram of Pressure", x = "Pressure (hPa)", y = "Frequency") +
+  theme_minimal()
+```
+
+```{r, echo=TRUE}
+psych::describe(weatherHistory[, c("temperature", "pressure")])
+```
+
+Temperature has the mean 11.93 and the a standard deviation of 9.55. With this
+standard deviation showing significant fluctuations in the temperature.
+With the kurtosis of -0.57 indicates a distribution flatter than a normal 
+distribution. We also have 0.03 of standard error of the mean that the measure 
+is precise.
+We can conclude that temperature is a symmetric and a flatter variable.
+
+Pressure data in the other hand shows a skew data with a lot of zero values.
+Hit has a kurtosis of 69.26 indicate thick tails and a skew of -8.42 indicating
+the data is concentrated in the right side of the mean. 
+
+
+Testing the temperature for normality
+
+```{r, echo=TRUE}
+ggplot(weatherHistory, aes(sample=temperature)) + stat_qq()
+```
+
+```{r, echo=TRUE}
+ad.test(weatherHistory$temperature)
+
+ad.test(weatherHistory$pressure)
+```
+
+We can also see that neither temperature or pressure follows a normal 
+distribution.
+
+### b) Explore the relationship between pressure and temperature.
+
+To explore the relationship between pressure and temperature.
+
+```{r, echo=TRUE}
+ggplot(weatherHistory, aes(x = temperature, y = pressure)) +
+  geom_point(alpha = 0.5) +  # using some transparency for points
+  geom_smooth(method = "lm", se = FALSE, color = "blue", formula = y ~ x) +  
+  labs(title = "Temperature vs. Pressure",
+       x = "Temperature",
+       y = "Pressure") +
+  theme_minimal()
+```
+It seems that the pressure outliers are affecting the relationship between 
+temperature and pressure. Let's remove them e see the correlation.
+
+```{r, echo=TRUE}
+weatherHistoryWithPressure <- weatherHistory %>%  
+    filter(pressure != 0) %>%  
+    filter(!is.na(temperature) & !is.na(pressure))
+
+
+ggplot(weatherHistoryWithPressure, aes(x = temperature, y = pressure)) +
+  geom_point(alpha = 0.5) +  # using some transparency for points
+  geom_smooth(method = "lm", se = FALSE, color = "blue", formula = y ~ x) + 
+  labs(title = "Temperature vs. Pressure",
+       x = "Temperature",
+       y = "Pressure") +
+  theme_minimal()
+```
+
+Let's also do a Pearson's correlation between the variables.
+
+```{r, echo=TRUE}
+cor.test(weatherHistoryWithPressure$temperature, weatherHistoryWithPressure$pressure)
+```
+The scatterplot suggest that we have a non-linear relationship between 
+temperature and pressure. So doing a linear regression model will not capture
+or explain the relationship between them.
+
+The correlation coefficient from the Pearson's test indicates a negative 
+relationship of 0.31. So it means when the temperature increases the pressure
+decreases.
+
+The p-value is also too low (2.2e-16) suggesting the relationship is statistical
+significant.
+
+### c) Build a linear model considering temperature and pressure.
+
+First let's create the model.
+
+```{r, echo=TRUE}
+lmTemperaturePressure <-  lm(pressure ~ temperature, 
+                             data = weatherHistoryWithPressure)
+anova(lmTemperaturePressure)
+```
+
+```{r, echo=TRUE}
+summary(lmTemperaturePressure)
+```
+
+Standartize co-efficients to get the result expressed in standart deviations.
+```{r, echo=TRUE}
+lm.beta(lmTemperaturePressure)  
+```
+
+```{r, echo=TRUE}
+suppressWarnings(stargazer(lmTemperaturePressure, type="text"))
+```
+So we got the following results:
+
+- For every 1 degree increase in temperature the pressure decreases 0.253 units.
+- The p value is 0.01 who give us 99% confidence level. Also our F statistic
+is 10,150.310. Suggesting that the temperature is a good predictor of pressure.
+- R squared is 0.096 meaning that 9.6% of the pressure variance is explained
+by the temperature.
+
+
+```{r, echo=TRUE}
+plot(residuals(lmTemperaturePressure), main = "Residuals of the Model",
+     xlab = "Index", ylab = "Residuals")
+abline(h = 0, col = "red")
+```
+
+
+```{r, echo=TRUE}
+plot(lmTemperaturePressure)
+```
+
+Looking at the residuals we can see that there is a funneling effect 
+showing a spread out as the fitted values increase suggesting a non-constant
+variance.
+
+#### d) Identify a dummy variable and build extended model considering dummy variable.
+
+Let's use the categorical variable precipType as a dummy variable for our model
+ 
+```{r, echo=TRUE}
+weatherHistoryDummy <- weatherHistory
+weatherHistoryDummy$humidityScale <- cut(weatherHistory$windSpeed, 
+                                     breaks=c(0, 0.25, 0.6, 1), 
+                                     labels=c("dry", "comfortable", "humid"))
+levels(weatherHistoryDummy$humidityScale)
+table(weatherHistoryDummy$humidityScale)
+```
+ 
+So we have we possible values: dry, rain and snow.
+
+Mapping them in our dataset.
+
+```{r, echo=TRUE}
+weatherHistoryDummy$dry <- ifelse(weatherHistoryDummy$humidityScale == "dry", 1, 0)
+weatherHistoryDummy$comfortable <- ifelse(weatherHistoryDummy$humidityScale == "comfortable", 1, 0)
+weatherHistoryDummy$humid <- ifelse(weatherHistoryDummy$humidityScale == "humid", 1, 0)
+
+table(weatherHistoryDummy[, c("humidityScale")])
+table(weatherHistoryDummy[, c("dry")])
+table(weatherHistoryDummy[, c("comfortable")])
+table(weatherHistoryDummy[, c("humid")])
+```
+
+Lets consider the humid dummy variable and how it influenciates the pressure.
+
+```{r, echo=TRUE}
+lmTempPresWithDummy <- lm(pressure ~ temperature + humid, data = weatherHistoryDummy)
+```
+
+### e) Report your findings.
+ 
+```{r, echo=TRUE}
+summary(lmTempPresWithDummy)
+```
+
+```{r, echo=TRUE}
+lm.beta(lmTempPresWithDummy)  
+```
+
+```{r, echo=TRUE}
+suppressWarnings(stargazer(lmTempPresWithDummy, type="text"))
+```
+
+If we consider the humidity as dummy variable we get the model equaltion:
+$$ pressure = 1010.012 - 0.085 \times temperature + 6.052 \times humid  $$
+
+Conclusions: 
+ 
+ - The pressure is 1010.012 when the temperature and humidity is 0;
+ - The pressure drops 0.085 per degree increase in temperature;
+ - When the weather is humid the pressure increases 6.052;
+ - R-squared is less than 0.001 indicating that the model explain less than 1%
+   of the variance to the pressure;
+ - A negative adjusted R-squared suggests that the model fits the data worse than
+   just the mean of the dependent variable. 
+ -  F-statistic is 0.4302 with a p-value of 0.6505, indicating that the model is not statistically significant.
+ 
