@@ -6,9 +6,6 @@ output:
     toc: true
     toc_depth: 2
     mathjax: "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"
-  pdf_document:
-    toc: true
-    toc_depth: '2'
 ---
 
 ```{r, echo = FALSE, results = "hide"}
@@ -511,4 +508,23 @@ indicative of high multicollinearity.
 So we can conclude that *there is no Perfect Multicollinearity in our model*.
 
 ### d) Investigate a differential effect by adding dummy variable
+
+First lets create a dummy variable. We consider to create a variable to verify 
+the day is cloudy or not.
+
+```{r, echo=TRUE}
+weatherHistoryWithPressure$cloudy <- ifelse(grepl("cloudy", tolower(weatherHistoryWithPressure$summary)), 1, 0)
+table(weatherHistoryWithPressure$cloudy)
+```
+
+Comparing the results between the models (Simple and With the Dummy variable).
+
+```{r, echo=TRUE, results='asis'}
+modelPressureSimple <- lm(pressure ~ windSpeed + humidity +  temperature , data = weatherHistoryWithPressure)
+lm.beta(modelPressureSimple)
+modelPressureDummy <- lm(pressure ~ windSpeed + humidity +  temperature , data = weatherHistoryWithPressure)
+lm.beta(modelPressureDummy)
+suppressWarnings(stargazer(modelPressureSimple, modelPressureDummy, type="html", title= "Regression Results", align = T))
+```
+
 
