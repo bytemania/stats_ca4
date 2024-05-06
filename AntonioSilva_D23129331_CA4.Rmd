@@ -12,7 +12,7 @@ output:
 ---
 
 ```{r, echo = FALSE, results = "hide"}
-needed_packages <- c("stats", "lm.beta", "stargazer", "ggplot2", "ppcor", "car", "nortest", "dplyr", "tidyverse")                      
+needed_packages <- c("stats", "lm.beta", "stargazer", "ggplot2", "ppcor", "car", "nortest", "dplyr", "tidyverse", "lmtest")                      
 # Extract not installed packages
 not_installed <- needed_packages[!(needed_packages %in% installed.packages()[ , "Package"])]    
 
@@ -25,16 +25,17 @@ library(ppcor, quietly = T)
 library(car, quietly = T)
 library(nortest, quietly = T)
 library(dplyr, quietly = T)
+library(lmtest, quietly = T)
 ```
 
 # Question 1 - Linear regression with dummy variable [5 marks]
 Consider the dataset "weatherhistory.csv".
 
- a) Describe dependent variable pressure and independent variable temperature.
- b) Explore the relationship between pressure and temperature.
- c) Build a linear model considering temperature and pressure.
- d) Identify a dummy variable and build extended model considering dummy variable.
- e) Report your findings.
+ a) Describe dependent variable pressure and independent variable temperature;
+ b) Explore the relationship between pressure and temperature;
+ c) Build a linear model considering temperature and pressure;
+ d) Identify a dummy variable and build extended model considering dummy variable;
+ e) Report your findings;
 
 ## Answer
 ### a) Describe dependent variable pressure and independent variable temperature.
@@ -202,7 +203,7 @@ plot(lmTemperaturePressure)
 
 Looking at the residuals we can see that there is a funneling effect 
 showing a spread out as the fitted values increase suggesting a non-constant
-variance.
+variance. We get a bigger residuals for lower or higher pressures.
 
 #### d) Identify a dummy variable and build extended model considering dummy variable.
 
@@ -255,6 +256,10 @@ suppressWarnings(stargazer(lmTempPresWithDummy, type="text"))
 If we consider the humidity as dummy variable we get the model equaltion:
 $$ pressure = 1010.012 - 0.085 \times temperature + 6.052 \times humid  $$
 
+```{r, echo=TRUE}
+plot(lmTempPresWithDummy)
+```
+
 Conclusions: 
  
  - The pressure is 1010.012 when the temperature and humidity is 0;
@@ -264,5 +269,246 @@ Conclusions:
    of the variance to the pressure;
  - A negative adjusted R-squared suggests that the model fits the data worse than
    just the mean of the dependent variable. 
- -  F-statistic is 0.4302 with a p-value of 0.6505, indicating that the model is not statistically significant.
+ -  F-statistic is 0.4302 with a p-value of 0.6505, indicating that the model
+    is not statistically significant.
+    
+
+# Question 2 - Multiple Linear Regression [6 marks]
+Consider the dataset "weatherhistory.csv".
+
+a) Explore the relationship between pressure and windspeed;
+b) Build a linear model considering (windspeed, humidity, temperature) and pressure;
+c) Assess how model meets key assumptions of linear regression;
+d) Investigate a differential effect by adding dummy variable;
+e) Investigate interaction between effect for windspeed and dummy variable;
+f) Report your findings.
+
+## Answer
+### a) Explore the relationship between pressure and windspeed
+
+First we create a scatterplot to visualize the correlation between pressure
+and windspeed.
+
+```{r, echo=TRUE}
+ggplot(weatherHistory, aes(x = windSpeed, y = pressure)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", color = "blue", formula="y ~ x") +
+  labs(title = "Pressure vs Wind Speed",
+       x = "Wind Speed",
+       y = "Pressure") +
+  theme_minimal()
+```
+
+We have a lot of points with pressure equals 0. So let's remove the outliers.
+
+```{r, echo=TRUE}
+ggplot(weatherHistoryWithPressure, aes(x = windSpeed, y = pressure)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", color = "blue", formula="y ~ x") +
+  labs(title = "Pressure vs Wind Speed",
+       x = "Wind Speed",
+       y = "Pressure") +
+  theme_minimal()
+```
+
+Let's also do a Pearson correaltion test
+
+```{r, echo=TRUE}
+cor.test(weatherHistoryWithPressure$pressure, weatherHistoryWithPressure$windSpeed)
+```
+Considerations;
  
+- The regression line, shown in blue, indicates a negative linear relationship
+   between wind speed and pressure. As wind speed increases, pressure tends to
+   decrease;
+- The data points are concentrated for lower wind speeds suggesting 
+  higher variance for higher wind speeds. Also its uncommon wind speeds higher
+  than 40;
+- The negative correlation of 0.25 suggest indicates a week relationship 
+  between both variables;
+- The p-value of 2.2e-16 for a confidence level of 95% suggests that
+  the correlation is statistical significant.
+
+### b) Build a linear model considering (windspeed, humidity, temperature) and pressure
+
+```{r, echo=TRUE}
+modelPressure <- lm(pressure ~ windSpeed + humidity +  temperature, data = weatherHistoryWithPressure)
+summary(modelPressure)
+```
+
+Standartize co-efficients to get the result expressed in standart deviations.
+```{r, echo=TRUE}
+lm.beta(modelPressure)
+suppressWarnings(stargazer(modelPressure, type="text"))
+```
+
+We got the model equation:
+$$ pressure = 1037.444 - 0.377 \times windSpeed - 15.253 \times humidity - 0.448 \times temperature $$
+We can conclude the following:
+
+- Intercept 1037.444. Value expected when all predictors are zt zero.
+- All predictors are negative indicating then when they increase the pressure
+  will drop for every unit each (0.377 windSpeed, 15.256 humidity and 0.448 temperature);
+- The humidity is the less influential in the pressure because it ranges between 0 and 1;
+- All the variables have a p-value lower tha 0.01 meaning that we have a confidence level bigger than 99% that they're statistical significant;
+- The $R^2$ and $Ajusted\ R^2$ are 0.24 meaning that this model explain 24% of the pressure variance;
+- We have a residual standart error of approximately 6.779. Considering that the pressure ranges are bigger than 1000 is a small error;
+- The F Statistic 10,037.910 is a  high and significant (p < 0.01) value confirm that is a statistic model.
+
+### c) Assess how model meets key assumptions of linear regression.
+
+#### Linear relationship between the response variable and the predictors
+
+```{r, echo=TRUE}
+linearity <- weatherHistoryWithPressure |> mutate(yhat = fitted(modelPressure), res = residuals(modelPressure))
+
+ggplot(linearity, aes(x = yhat, y = res)) +
+  geom_point() +
+  geom_hline(yintercept = 0, color = "red", linetype = "dashed") +
+  geom_smooth(method = "gam", color = "blue", se = FALSE, formula = y ~ s(x, bs = "cs")) +
+  labs(title = "Fitted vs Residuals",x = "Fitted",y = "Residuals")
+```
+
+```{r, echo=TRUE}
+ggplot(linearity, aes(x = windSpeed, y = res)) +
+  geom_point() +
+  geom_hline(yintercept = 0, color = "red", linetype = "dashed") +
+  geom_smooth(method = "gam", color = "blue", se = FALSE, formula = y ~ s(x, bs = "cs")) +
+  labs(title = "WindSpeed vs Residuals",x = "WindSpeed",y = "Residuals")
+```
+
+```{r, echo=TRUE}
+ggplot(linearity, aes(x = humidity, y = res)) +
+  geom_point() +
+  geom_hline(yintercept = 0, color = "red", linetype = "dashed") +
+  geom_smooth(method = "gam", color = "blue", se = FALSE, formula = y ~ s(x, bs = "cs")) +
+  labs(title = "humidity vs Residuals",x = "humidity",y = "Residuals")
+```
+
+```{r, echo=TRUE}
+ggplot(linearity, aes(x = temperature, y = res)) +
+  geom_point() +
+  geom_hline(yintercept = 0, color = "red", linetype = "dashed") +
+  geom_smooth(method = "gam", color = "blue", se = FALSE, formula = y ~ s(x, bs = "cs")) +
+  labs(title = "temperature vs Residuals",x = "temperature",y = "Residuals")
+```
+
+We got the following results:  
+
+- The first chart shows the Fitted Values vs Residuals. It shows a curve
+  in the tails (lower and higher pressures), not suggesting that the relationship
+  between the predictors and the dependent variable is not linear.
+
+- The chart for the WindSpeed is fairly linear until we get the 30 Km/h but 
+  after that we get a positive curve not suggesting a linear relation for higher windspeeds
+  with the variance increasing.
+  
+- In the other side we have the humidity. The variance decreases with lower humidity values (<0.25)
+  and after is fairly constant suggesting a linear relationship for humidity >= 0.25.
+  
+- The temperature variable agains the residuals show a sightly curve around 
+  the 0 line. Show we can say that the temperature is somewhat linear.
+  
+The result is that *this model is not a linear model*. We can improve it removing 
+the outliers or do some kind of transformation.
+
+#### Independence of errors
+
+```{r, echo=TRUE}
+plot(resid(modelPressure), type = 'l', main = "Residuals Plot",
+     xlab = "Index", ylab = "Residuals")
+abline(h = 0, col = "red")
+```
+
+The Residuals Plot isplays the residuals from your linear regression model 
+plotted against their index, 
+which represents the order in which data were collected (you can confirm
+by the time of the data tha is in order).
+
+As we can see the model does not presents obvious bias estimating the
+dependent variable.
+
+We can assume that the *model is independent of errors*.
+
+#### Homoscedasticity
+
+The variance of the residuals should remain constant across all levels of the 
+independent variables. 
+
+By the previous Residuals Plots we see that they present a funneling shape
+for all variables suggesting that the *model exhibits heteroscedasticity*.
+To confirm we can do Breusch-Pagan test.
+
+```{r, echo=TRUE}
+bptest(modelPressure)
+```
+Given the result of the test we can conclude that with a small p-value (2.2e-16)
+we have strong evidence that the *variance of the residuals is not constant*.
+
+#### Normality of Errors
+
+Residuals should be approximately normally distributed. To verify we will do
+the histogram for the residuals
+
+```{r, echo=TRUE}
+ggplot(linearity, aes(x = res)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 50) +
+  ggtitle("Histogram of Residuals") +
+  xlab("Residuals") +
+  ylab("Density") +
+  stat_function(fun = dnorm, args = list(mean = mean(linearity$res), sd = sd(linearity$res)), color = "blue", linewidth = 1) +
+  theme_minimal()
+```
+
+```{r, echo=TRUE}
+qqnorm(linearity$res, main = "Q-Q Plot of Residuals")
+qqline(linearity$res, col = "red")
+```
+
+```{r, echo=TRUE}
+ad.test(linearity$res)
+```
+By the qqplot and the result of Anderson-Darling normality test we can conclude
+that the *residuals don't not follow a normal distribution*.
+
+```{r, echo=TRUE}
+ad.test(linearity$res)
+```
+
+#### No Multicollinearity among Predictors
+
+To measure how much the variance of an estimated regression coefficient 
+increases if the predictors are correlated.
+
+So if the Vif results can be interpreted based on the results per variable. If VIF equals:
+
+- 1: that there is no correlation between a given predictor with others;
+- >= 1 && <= 5: Moderate correlation but no severe;
+- > 5: Higly correlated.
+
+```{r, echo=TRUE}
+vif(modelPressure)
+```
+
+```{r, echo=TRUE}
+vif(modelPressure)
+```
+
+
+Based on our results or predictors are *Lightly correlate between them* 
+not *affecting our predictive model*. In other words: 
+*each coefficient produced by the regression model is likely reliable*.
+
+#### No Perfect Multicollinearity
+
+```{r, echo=TRUE}
+cor(weatherHistoryWithPressure[c("windSpeed", "humidity", "temperature")])
+```
+Looking at the correlation matrix we only have one moderate negative correlation,
+that is humidity with temperature (-0.633). This value is significant but not
+indicative of high multicollinearity.
+
+So we can conclude that *there is no Perfect Multicollinearity in our model*.
+
+### d) Investigate a differential effect by adding dummy variable
+
