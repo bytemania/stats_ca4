@@ -9,8 +9,7 @@ output:
 ---
 
 ```{r, echo = FALSE, results = "hide"}
-needed_packages <- c("stats", "lm.beta", "stargazer", "ggplot2", "ppcor", "car", "nortest", "dplyr", "tidyverse", "lmtest")                      
-# Extract not installed packages
+needed_packages <- c("stats", "lm.beta", "stargazer", "ggplot2", "ppcor", "car", "nortest", "dplyr", "tidyverse", "lmtest", "pROC")                      
 not_installed <- needed_packages[!(needed_packages %in% installed.packages()[ , "Package"])]    
 
 if(length(not_installed)) install.packages(not_installed, repos ="http://cran.us.r-project.org")                              
@@ -23,6 +22,7 @@ library(car, quietly = T)
 library(nortest, quietly = T)
 library(dplyr, quietly = T)
 library(lmtest, quietly = T)
+library(pROC, quietly = T)
 ```
 
 # Question 1 - Linear regression with dummy variable [5 marks]
@@ -510,21 +510,301 @@ So we can conclude that *there is no Perfect Multicollinearity in our model*.
 ### d) Investigate a differential effect by adding dummy variable
 
 First lets create a dummy variable. We consider to create a variable to verify 
-the day is cloudy or not.
+if its rainning or not.
 
 ```{r, echo=TRUE}
-weatherHistoryWithPressure$cloudy <- ifelse(grepl("cloudy", tolower(weatherHistoryWithPressure$summary)), 1, 0)
-table(weatherHistoryWithPressure$cloudy)
+weatherHistoryWithPressure$rain <- ifelse(weatherHistoryWithPressure$precipType == "rain", 1, 0)
+table(weatherHistoryWithPressure$rain)
 ```
 
-Comparing the results between the models (Simple and With the Dummy variable).
+Next we have the both models. Results will be discuss later.
 
 ```{r, echo=TRUE, results='asis'}
 modelPressureSimple <- lm(pressure ~ windSpeed + humidity +  temperature , data = weatherHistoryWithPressure)
 lm.beta(modelPressureSimple)
-modelPressureDummy <- lm(pressure ~ windSpeed + humidity +  temperature , data = weatherHistoryWithPressure)
+modelPressureDummy <- lm(pressure ~ windSpeed + humidity +  temperature + rain , data = weatherHistoryWithPressure)
 lm.beta(modelPressureDummy)
-suppressWarnings(stargazer(modelPressureSimple, modelPressureDummy, type="html", title= "Regression Results", align = T))
+summary(modelPressureSimple)
+summary(modelPressureDummy)
+```
+### e) Investigate an interaction effect for windspeed and dummyvariable
+
+Adding the interaction we need to add the term `windSpeed:rain` to understand
+the pressure correlates with windSpeed for rainy and non-rainy days.
+Conclusions will be done later.
+
+```{r, echo=TRUE, results='asis'}
+modelPressureDummyInteraction <- lm(pressure ~ windSpeed + humidity +  temperature + rain  + windSpeed:rain, data = weatherHistoryWithPressure)
+lm.beta(modelPressureDummyInteraction)
+summary(modelPressureDummyInteraction)
+```
+
+### f) Report your findings
+
+```{r, echo=TRUE}
+suppressWarnings(stargazer(modelPressureSimple, modelPressureDummy, modelPressureDummyInteraction, type="text",
+                           title= "Regression Results", align = T, 
+                           column.labels = c("Pressure", "Pressure with Dummy", "Pressure with Dummy and Interaction")))
+```
+
+Comparing the both models we find the following conclusions:
+
+- The dummy variable rain its interaction with windSpeed increases the 
+  explainability of the pressure. 
+- The addition of rain and its interaction with windSpeed increase the 
+  explainability 0.8%. We can tell that 
+  *the effect of windSpeed in pressure can differ on rainy or non-rainy days*;
+- The residuals are sightly lower in the latest model than the first without
+  the dummy variable. It means the inclusion made the prediction more accurate.
+
+# Question 3 - Logistic regression [4 marks]
+Consider the dataset "heartfailure.csv".
+
+ a) Build a model considering diabetes as predictor;
+ b) Calculate and analyze odds ratio of the model;
+ c) Extend the model by considering variable age. 
+   (Convert the age into categorical data, 
+        if age < 55 , category 1; 
+        age is between 55 and 68, category 2; 
+        otherwise category 3
+        );
+ d) Report your findings;
+
+## Answer
+### a) Build a model considering diabetes as predictor
+Load the dataset and analyze the structure.
+
+```{r, echo=TRUE}
+heartFailure <- read.csv("heartfailure.csv")
+str(heartFailure)
+```
+Either diabetes predictor and DEATH_EVENT are *Binary Variables*. In the structure
+they are represent as a int, so they need to be corrected.
+
+```{r, echo=TRUE}
+heartFailure$diabetes <- factor(heartFailure$diabetes, levels = c(0, 1))
+heartFailure$DEATH_EVENT <- factor(heartFailure$DEATH_EVENT, levels = c(0, 1))
+str(heartFailure)
+```
+Describing both variables we got:
+```{r, echo=TRUE}
+table(heartFailure$diabetes)
+table(heartFailure$DEATH_EVENT)
+
+ggplot(heartFailure, aes(x = factor(diabetes), fill = factor(DEATH_EVENT))) +
+  geom_bar(position = "fill") +
+  scale_x_discrete(labels = c("No", "Yes")) +
+  scale_fill_manual(values = c("darkgreen", "darkred"), labels = c("Survived", "Died")) +
+  labs(title = "Proportion of Deaths by Diabetes",
+       x = "Diabetes", y = "Proportion", fill = "Outcome")
+```
+By the chart proportion histogram we have two insights:
+
+- Both groups has more survivals than deaths. 
+- The proportion of death between Deaths and Non-Diabets are similar suggesting
+that diabetes is not a good predictor for the outcome. 
+
+Modelling the 
+```{r, echo=TRUE}
+modelDiabetes <- glm(DEATH_EVENT ~ diabetes, data = heartFailure, family = binomial())
+
+summary(modelDiabetes)
+
+suppressWarnings(stargazer(modelDiabetes, type="text"))
+```
+
+So we got the following model equation:
+
+$$
+  p(x) = \frac{1}{e^{-(intercept + b_{diabetes} \times diabetes)}} = \frac{1}{e^{-(-0.745333 - 0.008439 \times diabetes)}} = \frac{1}{e^{(0.745333 + 0.008439 \times diabetes)}}
+$$
+
+Because diabetes is a binary variable we have 2 possible values:
+
+$$
+  p(0) = \frac{1}{e^{0.745}} \\ 
+  p(1) = \frac{1}{e^{(0.745 + 0.008)}}
+$$
+
+We evaluate the model doing the 3 tests:
+- Likelihood Ratio Test: Explain the variable explanability of the model. 
+  Good to compare if the curve fits better compared with other models with other variables;
+- Verify the Confusion Matrix. Good to measure the performance and accuracy;
+- ROC and AUC curve.The ROC curve visually shows the trade-off between
+  sensitivity and specificity for every possible cut-off.
+  The AUC value quantifies the overall ability of the test to discriminate
+  between the individuals having the outcome and those not having the outcome.
+
+Likelihood ratio test
+```{r, echo=TRUE}
+lrtest(modelDiabetes)
 ```
 
 
+```{r, echo=TRUE}
+lrtest(modelDiabetes)
+```
+
+```{r, echo=TRUE}
+predicted_probs <- predict(modelDiabetes, type = "response")
+predicted_classes <- ifelse(predicted_probs > 0.5, 1, 0)
+actual_classes <- heartFailure$DEATH_EVENT
+
+confusion_matrix <- suppressWarnings(caret::confusionMatrix(factor(predicted_classes), factor(actual_classes), positive = "1"))
+print(confusion_matrix)
+```
+```{r, echo=TRUE}
+roc_curve <- roc(heartFailure$DEATH_EVENT, fitted(modelDiabetes))
+plot(roc_curve, main="ROC Curve for Diabetes Model", col="blue", print.auc = T)
+```
+
+
+Conclusions:
+
+- Intercept of -0.745 with standard error of 0.162. This negative value
+indicates the absence of diabetes. The p-value is 4.37e-06 meaning that 
+this value is statically significant for a confident level of 99.9%;
+- Diabetes coefficient of -0.008430 with a standard error of 0.251;
+  the p-value of 0.973 is almost 1 (much greater than 0.05)
+  we can conclude that there is *no statically significant evidence* that
+  diabetes has an effect on probability;
+- The AUC is the same than the ROC curve meaning that diabetes is irrelevant 
+  to predict heart failure;
+- The confusion matrix shows that the model fails to identify true positives
+  (sensitivity = 0) suggesting that *diabetes is not a good indicator*;
+- The Likelihood ratio shows *no improvement adding the diabetes variable* to the model (no change compared with the reference value).
+
+### b) Calculate and analyze odds ratio of the model
+
+```{r, echo=TRUE}
+coefDiabetes <- coef(modelDiabetes)["diabetes1"]
+exp(coefDiabetes)
+```
+
+To calculate the odds ratio, we exponentiate the coefficient of diabetes. 
+This coefficient represents the log-odds of diabetes influencing the outcome. 
+The odds ratio itself quantifies the strength of the association between
+diabetes and the occurrence of a DEATH_EVENT.
+
+Because the Odds Ratio is close to 1 ($OR_{diabetes} \approx 1$)  this means the diabetes has 
+ *little to no effect* predicting DEATH_EVENT.
+ 
+This is confirmed our p-value 0.973 (Wald Test) that is that is not statistical
+significant.
+
+### c) Extend the model by considering variable age. 
+    (Convert the age into categorical data, 
+    - if age < 55 , category 1; 
+    - age is between 55 and 68 category 2 ; 
+    - otherwise category 3)
+
+First we well create a new category and add it for our dataset.
+```{r, echo=TRUE}
+heartFailure$AGE_CAT <- cut(heartFailure$age, 
+                            breaks = c(-Inf, 55, 68, Inf), 
+                            labels = c("1", "2", "3"),
+                            right = FALSE)
+
+ggplot(heartFailure, aes(x = factor(AGE_CAT), fill = factor(DEATH_EVENT))) +
+  geom_bar(position = "fill") +
+  scale_x_discrete(labels = c("0-54", "55-67", "68+")) +
+  scale_fill_manual(values = c("darkgreen", "darkred"), labels = c("Survived", "Died")) +
+  labs(title = "Proportion of Deaths by Age",
+       x = "Diabetes", y = "Proportion", fill = "Outcome")
+```
+
+Extend the model
+```{r, echo=TRUE}
+modelDeathDiabetesAge <- glm(DEATH_EVENT ~ diabetes + AGE_CAT, family = binomial(), data = heartFailure) 
+summary(modelDeathDiabetesAge)
+
+suppressWarnings(stargazer(modelDeathDiabetesAge, type="text"))
+```
+
+
+
+Likelihood ratio test
+```{r, echo=TRUE}
+lrtest(modelDeathDiabetesAge)
+```
+Confusion Matrix:
+```{r, echo=TRUE}
+predicted_probs_wage <- predict(modelDeathDiabetesAge, type = "response")
+predicted_classes_wage <- ifelse(predicted_probs_wage > 0.5, 1, 0)
+actual_classes_wage <- heartFailure$DEATH_EVENT
+
+confusion_matrix_wage <- suppressWarnings(caret::confusionMatrix(factor(predicted_classes_wage), factor(actual_classes_wage), positive = "1"))
+print(confusion_matrix_wage)
+```
+
+And the ROC Curve:
+```{r, echo=TRUE}
+roc_curve_wage <- roc(heartFailure$DEATH_EVENT, fitted(modelDeathDiabetesAge))
+plot(roc_curve_wage, main="ROC Curve for Diabetes + Age Model", col="blue", print.auc = T)
+```
+
+Model we consider the reference level as $diabetes = 0$ and $AGE\_CAT = 1$:
+
+$$
+  p(x) = \frac{1}{e^{-(\beta_{intercept} + \beta_{diabetes} \times diabetes + \beta_{AGE\_CAT2} \times AGE\_CAT2 + \beta_{AGE\_CAT3} \times AGE\_CAT3)}} \\ 
+  p(x) = \frac{1}{e^{-(−1.2695 + 0.1586 \times diabetes + 0.1893 \times AGE\_CAT2 + 1.1993 \times AGE\_CAT3)}} \\
+  p(x) = \frac{1}{e^{1.2695 - 0.1586 \times diabetes - 0.1893 \times AGE\_CAT2 - 1.1993 \times AGE\_CAT3)}} 
+$$
+
+We can use the log form equivalent of this equation:
+$$
+log\left(\frac{p}{1 - p}\right) = \beta_{intercept} + \beta_{diabetes} \times diabetes + \beta_{AGE\_CAT2} \times AGE\_CAT2 + \beta_{AGE\_CAT3} \times AGE\_CAT3) \\
+log\left(\frac{p}{1 - p}\right) = −1.2695 + 0.1586 \times diabetes + 0.1893 \times AGE\_CAT2 + 1.1993 \times AGE\_CAT3
+$$
+
+
+Conclusions:
+- As we saw by the proportion histogram there is almost 50% of deaths in the 
+   Category 3 of (age 68+). Age looks a good predictor for our model;
+- Intercept coefficient for $diabetes = 0$ and $AGE\_CAT = 1$ is -1.2695.
+  The probability $p = 2.79e-6$ which indicates a high significant level;
+- The p-value of diabetes is $0.547029$ so diabetes is not statistical significant.
+  The increase is minimal with a $\beta_{diabetes} = 0.1586$;
+- The same can be said for AGE_CAT2 that has a p-value of $p-value = 0.553987$.
+  Increase in the DEATH_EVENT is residual ($\beta_{AGE\_CAT2} = 0.1893$);
+- *AGE_CAT3 (68 years and older) shows a substantial increase in the log odds of a DEATH_EVENT*.
+  It has a ($\beta_{AGE\_CAT3} = 1.1993$) and p-value of $ (p = 0.000264)$ who makes it 
+  statistical significant. This assumption is reasonable because as you get older
+  you have more change of die.
+- Likelihood ratio test shows that including diabetes and AGE_CAT in the model
+  significantly improves the model's explanatory power compared to just using 
+  the intercept. We know that we are considering only the AGE_CAT because
+  we saw in the earlier that diabetes didn't improve the explainability of the model;
+- In the confusion matrix we can see that we have a huge number of False Negatives (84)
+  who contribute for a 67.56% of accuracy. We also have a P value of 0.5765 indicating
+  that the test is not significant.
+- We have a sensitivity of 12.5% is quite low but better than the model without the age.
+
+### d) Report your finding
+
+So let's compare both models
+```{r, echo=TRUE}
+suppressWarnings(stargazer(modelDiabetes, modelDeathDiabetesAge, 
+                           type="text", 
+                           title= "Regression Results",
+                           column.labels = c("Diabetes", "Diabetes And Age"), 
+                           align = T))
+
+```
+
+```{r, echo=TRUE}
+par(mfrow=c(1,2))
+plot(roc_curve, main="ROC Diabetes", col="blue", print.auc = T)
+plot(roc_curve_wage, main="ROC Diabetes + Age", col="blue", print.auc = T)
+```
+  
+Based on our previous findings and look at the ROC charts we can say that
+the first model its the same than piking randomly who will die or not. So 
+the predictor diabetes its the same than the reference model. When we add 
+the variable age for the category 68+ we got a explainability of 12.5% what 
+makes the age a good predictor but needs to be pair with other predictors
+to increase the explainability.
+
+We also got an improvement in the second model with an increase of the 
+Likehood Ratio Test and (from -187.674 to -179.420) and a diminuition 
+of the AIC (from 379.348 to 366.841).
